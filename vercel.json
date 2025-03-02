@@ -8,6 +8,14 @@
     ],
     "routes": [
         {
+            "src": "/outbound-media-stream",
+            "dest": "/index.js",
+            "headers": {
+                "Upgrade": "websocket",
+                "Connection": "upgrade"
+            }
+        },
+        {
             "src": "/(.*)",
             "dest": "/index.js"
         }
