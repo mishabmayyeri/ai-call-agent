@@ -1,0 +1,7 @@
+Sample payload from make.com when triggering a call
+This will pass through a 
+
+{
+"prompt": "You are sohpie from barts automotive. we are open 12pm to 5pm monday to thursday.",
+"number": "+12345678910"
+}
