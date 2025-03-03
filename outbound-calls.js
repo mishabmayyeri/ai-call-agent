@@ -3,8 +3,8 @@ import Twilio from "twilio";
 
 export function registerOutboundRoutes(fastify) {
   // Check for required environment variables
-  const { 
-    ELEVENLABS_API_KEY, 
+  const {
+    ELEVENLABS_API_KEY,
     ELEVENLABS_AGENT_ID,
     TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN,
@@ -48,7 +48,7 @@ export function registerOutboundRoutes(fastify) {
   fastify.post("/outbound-call", async (request, reply) => {
     const { number, prompt, client, source } = request.body;
 
-    
+
 
     if (!number) {
       return reply.code(400).send({ error: "Phone number is required" });
@@ -61,16 +61,16 @@ export function registerOutboundRoutes(fastify) {
         url: `https://${request.headers.host}/outbound-call-twiml?prompt=${encodeURIComponent(prompt)}&client=${encodeURIComponent(client)}&source=${encodeURIComponent(source)}`
       });
 
-      reply.send({ 
-        success: true, 
-        message: "Call initiated", 
-        callSid: call.sid 
+      reply.send({
+        success: true,
+        message: "Call initiated",
+        callSid: call.sid
       });
     } catch (error) {
       console.error("Error initiating outbound call:", error);
-      reply.code(500).send({ 
-        success: false, 
-        error: "Failed to initiate call" 
+      reply.code(500).send({
+        success: false,
+        error: "Failed to initiate call"
       });
     }
   });
@@ -123,8 +123,53 @@ export function registerOutboundRoutes(fastify) {
               type: "conversation_initiation_client_data",
               conversation_config_override: {
                 agent: {
-                  prompt: { prompt: customParameters?.prompt || "you are a gary from the phone store" },
-                  first_message: `Hello ${customParameters?.client}, this is Alex from ${customParameters?.source}. Thank you for reaching out! How can I assist you today with your hiring needs or job search? I&apos;m here to ensure you have the best experience finding the right opportunity or the ideal candidate.`,
+                  prompt: {
+                    prompt: customParameters?.prompt || `Sample Conversation – AI Restaurant Booking Agent
+Shifa: Hello! I am Shifa, AI agent for The Skyline Bistro. I can assist you with table reservations, menu recommendations, special dietary requests, event bookings, and any other inquiries about our restaurant. How can I help you today?
+
+Guest: Hi, I’d like to book a table for two on Saturday night at 8:00 PM.
+
+Shifa: Of course! We have both indoor seating with live jazz music and our rooftop dining with a skyline view available at that time. Do you have a seating preference?
+
+Guest: The rooftop sounds amazing! Let’s go with that.
+
+Shifa: Great choice! I’ve reserved a table for two on our rooftop at 8:00 PM this Saturday. Would you like to explore our Chef’s Tasting Menu, a 5-course gourmet experience for $120 per person?
+
+Guest: That sounds interesting! What kind of dishes does it include?
+
+Shifa: The Chef’s Tasting Menu features a carefully curated selection of our finest dishes, including:
+ Truffle Burrata & Heirloom Tomatoes (starter)
+Pan-Seared Chilean Sea Bass (seafood course)
+Herb-Crusted Filet Mignon (main course)
+Artisan Cheese Board (pre-dessert)
+Decadent Dark Chocolate Lava Cake (dessert)
+
+Would you like me to add this to your reservation?
+
+Guest: That sounds fantastic! Yes, please.
+
+Shifa: Wonderful! Your reservation is confirmed: Saturday at 8:00 PM, rooftop seating for two, with the Chef’s Tasting Menu. Do you have any dietary preferences or allergies we should be aware of?
+
+Guest: No allergies, but my partner is vegetarian. Can we adjust the menu for that?
+
+Shifa: Absolutely! We can substitute the Herb-Crusted Filet Mignon with our Wild Mushroom & Truffle Risotto, which is a vegetarian delight. Would that work for you?
+
+Guest: That sounds perfect!
+
+Shifa: Excellent! I’ve updated your reservation. You’ll receive a confirmation via text and email shortly. If you have any special occasions to celebrate or need custom arrangements like a birthday cake, flowers, or a private table, feel free to let me know!
+
+Guest: Oh! It’s actually our anniversary. Do you offer any special arrangements?
+
+Shifa: Happy anniversary! We can arrange a romantic table setup with candles and flowers for $25, and we also offer a complimentary dessert for special occasions. Would you like me to add that to your booking?
+
+Guest: Yes, that would be wonderful. Thank you!
+
+Shifa: You're very welcome! Your reservation is now complete: Saturday at 8:00 PM, rooftop seating for two, Chef’s Tasting Menu (vegetarian modification), and a romantic table setup. We look forward to making your evening special!
+
+Guest: Thank you so much, Shifa!
+
+Shifa: It was my pleasure! Have a wonderful evening, and we’ll see you on Saturday at 8:00 PM!` },
+                  first_message: `Hello! I am Shifa, AI agent for The Skyline Bistro. I can assist you with table reservations, menu recommendations, special dietary requests, event bookings, and any other inquiries about our restaurant. How can I help you today?`,
                 },
               }
             };
@@ -172,9 +217,9 @@ export function registerOutboundRoutes(fastify) {
 
                 case "interruption":
                   if (streamSid) {
-                    ws.send(JSON.stringify({ 
+                    ws.send(JSON.stringify({
                       event: "clear",
-                      streamSid 
+                      streamSid
                     }));
                   }
                   break;
