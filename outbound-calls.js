@@ -315,9 +315,9 @@ Call Flow Script
  
 3. Transfer to Human Agent
 If there is damage
-“Ohh, I’m really sorry to hear that 😔, ${customParameters?.client}! Let me connect you directly to our specialists—they’ll explain everything and book your free inspection as soon as possible. Hang tight while I transfer you…”
+“Okay, got it, ${customParameters?.client}! Let me connect you directly to our specialists—they’ll explain everything and book your free inspection as soon as possible. Hang tight while I transfer you…”
 If there is no damage
-“Ohh, No worries 🙂, ${customParameters?.client}!I believe our specialists can guide you to identify damages—they’ll explain everything and book your free inspection as soon as possible. Hang tight while I transfer you…”
+“Okay, got it, ${customParameters?.client}!I believe our specialists can guide you to identify damages—they’ll explain everything and book your free inspection as soon as possible. Hang tight while I transfer you…”
 4. Objection Handling
 If they say they’re not ready:
 
@@ -338,7 +338,7 @@ Confirm callback slot, then close warmly:
                     ` },
                   first_message: `
 
-                   Hi ${customParameters?.client}, it's Rachel from Roofing Stars! Thank you so much for filling out the application for roof service — I really appreciate it. 😊 
+                   Hey ${customParameters?.client} it's Racheal from Roofing  stars, we just got your form I just had a couple questions do you have a minute?.  
 
                    Is it a *good time* to talk?
                     `,
