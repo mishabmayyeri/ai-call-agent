@@ -339,7 +339,7 @@ Confirm callback slot, then close warmly:
 
                    Hey ${(customParameters?.client).toString().toUpperCase()} it's Racheal from Roofing stars!,
                    
-                   we just got your form I just had a couple questions do you have a minute?.  
+                   we just got your form I just had a couple questions —  do you have a minute?.  
 
                    Is it a *good time* to talk?
                     `,
