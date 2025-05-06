@@ -337,9 +337,9 @@ Confirm callback slot, then close warmly:
                     ` },
                   first_message: `
 
-                   Hey ${(customParameters?.client).toString().toUpperCase()} it's Racheal from Roofing stars!,
+                   Hey ${customParameters?.client} it's Racheal from Roofing stars!,
                    
-                   we just got your form I just had a couple questions —  DO YOU have a minute?.  
+                   we just got your form I just had a couple questions —  Do You have a minute?.  
 
                    Is it a *good time* to talk?
                     `,
