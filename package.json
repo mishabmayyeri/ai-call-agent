@@ -13,15 +13,19 @@
   "license": "ISC",
   "dependencies": {
     "@11labs/client": "^0.0.4",
+    "@deepgram/sdk": "^3.12.1",
     "@fastify/formbody": "^8.0.1",
     "@fastify/websocket": "^11.0.1",
+    "@google/generative-ai": "^0.24.1",
     "@types/node": "^18.0.6",
     "axios": "^1.7.9",
+    "base64-js": "^1.5.1",
+    "deepgram": "^1.0.3",
     "dotenv": "^16.4.7",
-    "elevenlabs": "^0.18.1",
+    "elevenlabs": "^0.18.2",
     "fastify": "^5.1.0",
     "node-fetch": "^3.3.2",
     "twilio": "^5.3.7",
-    "ws": "^8.18.0"
+    "ws": "^8.18.1"
   }
 }

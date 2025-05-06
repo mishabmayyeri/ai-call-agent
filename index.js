@@ -27,11 +27,11 @@ fastify.get("/", async (_, reply) => {
 const start = async () => {
   try {
     // Register route handlers
-    await registerInboundRoutes(fastify);
-    await registerOutboundRoutes(fastify);
+    registerInboundRoutes(fastify);
+    registerOutboundRoutes(fastify);
 
     // Start listening
-    await fastify.listen({ port: PORT, host: '0.0.0.0' });
+    fastify.listen({ port: PORT, host: '0.0.0.0' });
     console.log(`[Server] Listening on port ${PORT}`);
   } catch (err) {
     fastify.log.error(err);

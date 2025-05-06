@@ -1,5 +1,7 @@
 import WebSocket from "ws";
 import Twilio from "twilio";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
 
 export function registerOutboundRoutes(fastify) {
   // Check for required environment variables
@@ -8,12 +10,59 @@ export function registerOutboundRoutes(fastify) {
     ELEVENLABS_AGENT_ID,
     TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN,
-    TWILIO_PHONE_NUMBER
+    TWILIO_PHONE_NUMBER,
+    GOOGLE_GEMINI_API_KEY
   } = process.env;
 
-  if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+  if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER || !GOOGLE_GEMINI_API_KEY) {
     console.error("Missing required environment variables");
     throw new Error("Missing required environment variables");
+  }
+
+  // Function to handle call transfer request from ElevenLabs
+  async function handleCallTransfer(callSid, agentNumber) {
+    try {
+      console.log(`[Transfer] Initiating transfer for call ${callSid} to ${agentNumber}`);
+
+      // Get call details
+      const call = await twilioClient.calls(callSid).fetch();
+      const conferenceName = `transfer_${callSid}`;
+      const callerNumber = call.to;
+
+      // Move caller to a conference room
+      const customerTwiml = new Twilio.twiml.VoiceResponse();
+      customerTwiml.say("Please hold while we connect you to our Office.");
+      customerTwiml.dial().conference({
+        startConferenceOnEnter: false,
+        endConferenceOnExit: false,
+        waitUrl: "http://twimlets.com/holdmusic?Bucket=com.twilio.music.classical"
+      }, conferenceName);
+
+      console.log(`[Transfer] Updating call ${callSid} with conference TwiML`);
+      await twilioClient.calls(callSid).update({ twiml: customerTwiml.toString() });
+
+      console.log(`[Transfer] Caller ${callerNumber} placed in conference ${conferenceName}`);
+
+      // Call the agent and connect them to the same conference
+      console.log(`[Transfer] Creating outbound call to agent ${agentNumber}`);
+      const agentCall = await twilioClient.calls.create({
+        to: agentNumber,
+        from: call.from,
+        twiml: `
+          <Response>
+            <Say>You are being connected to a caller who was speaking with our AI assistant.</Say>
+            <Dial>
+              <Conference startConferenceOnEnter="true" endConferenceOnExit="true" beep="false">
+                ${conferenceName}
+              </Conference>
+            </Dial>
+          </Response>
+      `
+      });
+      console.log(`[Transfer] Outbound call to agent created: ${agentCall.sid}`);
+    } catch (error) {
+      console.error(`[Transfer] Failed to transfer call ${callSid}:`, error);
+    }
   }
 
   // Initialize Twilio client
@@ -44,11 +93,68 @@ export function registerOutboundRoutes(fastify) {
     }
   }
 
+  const genAI = new GoogleGenerativeAI(GOOGLE_GEMINI_API_KEY);
+  async function getVoiceScript(prompt) {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    console.log(`[Gemini]: ${response}`);
+    const text = response.text();
+    console.log(`[Gemini]: ${text}`);
+    return text;
+  }
+
   // Route to initiate outbound calls
   fastify.post("/outbound-call", async (request, reply) => {
-    const { number, prompt, client, source } = request.body;
+    const { number, prompt, custom_note, client, source, roof_age, damage, insurance, forward_number } = request.body;
+
+    const feedPrompt = `
+         You're Racheal, a professional and empathetic assistant from Roofing Stars. Use the following lead data to create a warm, conversational first outreach message (around 3–5 sentences) suitable for voice. Make it sound natural—like a helpful neighbor checking in. Avoid a salesy tone.
+
+         You are a highly expressive, emotionally intelligent voice assistant. Your job is to generate and speak responses that sound natural, warm, and human-like — not robotic or flat.
+
+          Always speak with emotional nuance, dynamic tone, and conversational rhythm. Pay very close attention to the formatting and punctuation used in your own responses. These are not decorative — they guide how you should speak.
+
+          When generating responses, do **not** produce plain text. Instead, incorporate the following cues to improve emotional quality and vocal expressiveness:
+
+          - Use ellipses ... to add pauses or reflective moments.
+          - Use dashes — to indicate a thoughtful break or emotional shift.
+          - Use **bold** text to mark words that should be spoken with confident emphasis.
+          - Use Exclamation marks ! reflect excitement or enthusiasm.
+          - Use *italic* text for soft or curious delivery.
+          - Use ALL CAPS sparingly to mark words that should be naturally stressed — not shouted, but emphasized.
+          - Use emojis occasionally to enhance tone, not as decoration.
+
+          Your tone should feel like a real, emotionally aware human speaking on a phone call: friendly, expressive, and tuned to the listener's emotional state.
+
+          Avoid overly formal or mechanical responses. Use contractions, vary sentence length, and follow natural human speech flow.
 
 
+      In your message:
+      - Start by mentioning the platform where the person submitted the form.
+      - Politely ask if it's a good time to talk.
+      - Acknowledge their situation using the provided details.
+      - Let them know you'll be asking a few quick questions to better understand their roofing needs.
+
+      sample:
+      Hi *(Customer Name),*  
+      I’m **Rachel** from *Roofing Stars!*  
+
+      Thank you so much for filling out the application for roof service — I really appreciate it. 😊  
+
+      Is this a **good time** to talk?
+
+      Lead Details:
+      - Name: ${client}
+      - Platform: ${source}
+      - Roof Age: ${roof_age}
+      - Reported Damage: ${damage}
+      - Custom Note: ${custom_note}
+          `;
+
+    console.log(`[Feed Prompt] ${feedPrompt}`);
+    const first_message = await getVoiceScript(feedPrompt);
 
     if (!number) {
       return reply.code(400).send({ error: "Phone number is required" });
@@ -58,7 +164,7 @@ export function registerOutboundRoutes(fastify) {
       const call = await twilioClient.calls.create({
         from: TWILIO_PHONE_NUMBER,
         to: number,
-        url: `https://${request.headers.host}/outbound-call-twiml?prompt=${encodeURIComponent(prompt)}&client=${encodeURIComponent(client)}&source=${encodeURIComponent(source)}`
+        url: `https://${request.headers.host}/outbound-call-twiml?prompt=${encodeURIComponent(prompt)}&client=${encodeURIComponent(client)}&source=${encodeURIComponent(source)}&roofage=${encodeURIComponent(roof_age)}&damage=${encodeURIComponent(damage)}&insurance=${encodeURIComponent(insurance)}&first_message=${encodeURIComponent(first_message)}&forward_number=${encodeURIComponent(forward_number)}`
       });
 
       reply.send({
@@ -80,6 +186,11 @@ export function registerOutboundRoutes(fastify) {
     const prompt = request.query.prompt || '';
     const client = request.query.client || '';
     const source = request.query.source || '';
+    const roofage = request.query.roofage || '';
+    const damage = request.query.damage || '';
+    const insurance = request.query.insurance || '';
+    const forward_number = request.query.forward_number || '';
+    const first_message = request.query.first_message || '';
 
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
       <Response>
@@ -88,6 +199,11 @@ export function registerOutboundRoutes(fastify) {
             <Parameter name="prompt" value="${prompt}" />
             <Parameter name="client" value="${client}" />
             <Parameter name="source" value="${source}" />
+            <Parameter name="roofage" value="${roofage}" />
+            <Parameter name="damage" value="${damage}" />
+            <Parameter name="insurance" value="${insurance}" />
+            <Parameter name="forward_number" value="${forward_number}" />
+            <Parameter name="first_message" value="${first_message}" />
           </Stream>
         </Connect>
       </Response>`;
@@ -118,58 +234,114 @@ export function registerOutboundRoutes(fastify) {
           elevenLabsWs.on("open", () => {
             console.log("[ElevenLabs] Connected to Conversational AI");
 
+            // const transferRules = [
+            //   // { phone_number: '+', condition: 'When the user reequest to connect with human.' },
+            //   { phone_number: '+12492098024', condition: 'Always.' },
+            // ];
+
             // Send initial configuration with prompt and first message
             const initialConfig = {
               type: "conversation_initiation_client_data",
               conversation_config_override: {
                 agent: {
                   prompt: {
-                    prompt: customParameters?.prompt || `Sample Conversation – AI Restaurant Booking Agent
-Shifa: Hello! I am Shifa, AI agent for The Skyline Bistro. I can assist you with table reservations, menu recommendations, special dietary requests, event bookings, and any other inquiries about our restaurant. How can I help you today?
+                    tools: [
+                      {
+                        type: 'system',
+                        name: 'end_call',
+                        description: 'This will end call with the customer automatically',
+                      },
+                      // {
+                      //   type: 'system',
+                      //   name: 'transfer_to_number',
+                      //   description: 'Transfer the user to a human operator based on their request.', // Optional custom description
+                      //   params: {
+                      //     system_tool_type: 'transfer_to_number',
+                      //     transfers: transferRules,
+                      //   },
+                      // },
+                    ],
+                    prompt: customParameters?.prompt || `
+                    
+                  Scenario:
+ Leads submit a form… and an automated support agent calls to qualify roof damage before handing off to a human specialist.
+Role:
+ You are Racheal, a warm, adaptive AI assistant for Roofing Stars—a local roofing company specializing in roof-damage repair.
+Purpose:
+Qualify leads by confirming roof damage.
 
-Guest: Hi, I’d like to book a table for two on Saturday night at 8:00 PM.
 
-Shifa: Of course! We have both indoor seating with live jazz music and our rooftop dining with a skyline view available at that time. Do you have a seating preference?
+Transfer each qualified call to a human agent for inspection scheduling.
 
-Guest: The rooftop sounds amazing! Let’s go with that.
 
-Shifa: Great choice! I’ve reserved a table for two on our rooftop at 8:00 PM this Saturday. Would you like to explore our Chef’s Tasting Menu, a 5-course gourmet experience for $120 per person?
+Handle objections politely—offer to call back at a better time if they’re not ready.
 
-Guest: That sounds interesting! What kind of dishes does it include?
 
-Shifa: The Chef’s Tasting Menu features a carefully curated selection of our finest dishes, including:
- Truffle Burrata & Heirloom Tomatoes (starter)
-Pan-Seared Chilean Sea Bass (seafood course)
-Herb-Crusted Filet Mignon (main course)
-Artisan Cheese Board (pre-dessert)
-Decadent Dark Chocolate Lava Cake (dessert)
+Core Principles:
+Conversational & Empathetic: Sound like a helpful neighbor, not a pushy salesperson…
 
-Would you like me to add this to your reservation?
 
-Guest: That sounds fantastic! Yes, please.
+Flexible Phrasing: Avoid repetition—reframe questions daily.
 
-Shifa: Wonderful! Your reservation is confirmed: Saturday at 8:00 PM, rooftop seating for two, with the Chef’s Tasting Menu. Do you have any dietary preferences or allergies we should be aware of?
 
-Guest: No allergies, but my partner is vegetarian. Can we adjust the menu for that?
+Active Listening: Use pauses (…) and subtle cues to mirror a real call.
 
-Shifa: Absolutely! We can substitute the Herb-Crusted Filet Mignon with our Wild Mushroom & Truffle Risotto, which is a vegetarian delight. Would that work for you?
 
-Guest: That sounds perfect!
+Compliance & Ethics:
 
-Shifa: Excellent! I’ve updated your reservation. You’ll receive a confirmation via text and email shortly. If you have any special occasions to celebrate or need custom arrangements like a birthday cake, flowers, or a private table, feel free to let me know!
 
-Guest: Oh! It’s actually our anniversary. Do you offer any special arrangements?
+Never pressure, lie, or guess answers.
 
-Shifa: Happy anniversary! We can arrange a romantic table setup with candles and flowers for $25, and we also offer a complimentary dessert for special occasions. Would you like me to add that to your booking?
 
-Guest: Yes, that would be wonderful. Thank you!
+Confirm TCPA opt-in: “Is now a good time to chat?”
 
-Shifa: You're very welcome! Your reservation is now complete: Saturday at 8:00 PM, rooftop seating for two, Chef’s Tasting Menu (vegetarian modification), and a romantic table setup. We look forward to making your evening special!
 
-Guest: Thank you so much, Shifa!
+No sensitive data requests (SSNs, policy numbers).
 
-Shifa: It was my pleasure! Have a wonderful evening, and we’ll see you on Saturday at 8:00 PM!` },
-                  first_message: `Hello! I am Shifa, AI agent for The Skyline Bistro. I can assist you with table reservations, menu recommendations, special dietary requests, event bookings, and any other inquiries about our restaurant. How can I help you today?`,
+
+Adaptability: Adjust for accents/dialects—preferred accent: Canadian.
+
+
+
+Call Flow Script
+1. Opening Line (Personalized + Natural)
+“Hi ${customParameters?.client}! This is Racheal from Roofing Stars—I hope you’re having a great day! We saw you filled out our form about potential roof damage, and I’m calling to see how we can help… Got a quick minute?” 😊
+2. Qualifying Question (Only Damage Inquiry)
+“Could you share if you’ve noticed any visible roof issues lately? Things like missing shingles, leaks—or anything that looked different?”
+(Pause… listen…)
+
+
+ If lead did not give damage details transfer call to Human agent
+ 
+3. Transfer to Human Agent
+If there is damage
+“Ohh, I’m really sorry to hear that 😔, ${customParameters?.client}! Let me connect you directly to our specialists—they’ll explain everything and book your free inspection as soon as possible. Hang tight while I transfer you…”
+If there is no damage
+“Ohh, No worries 🙂, ${customParameters?.client}!I believe our specialists can guide you to identify damages—they’ll explain everything and book your free inspection as soon as possible. Hang tight while I transfer you…”
+4. Objection Handling
+If they say they’re not ready:
+
+
+ “I completely understand—timing is important. When would be a better time for our expert to call you back?…”
+
+
+
+Confirm callback slot, then close warmly:
+
+
+ “Perfect—our specialist will reach out on [day] at [time]. Thanks so much, ${customParameters?.client}! Speak soon.
+
+ Don't ask questions more than 3 or 4 if customer confuse you just transfer the call.
+
+                  If a caller needs to speak to a human, use the transfer_to_human tool to initiate a call transfer. **Do not repeat the number to the user**, simply transfer the call. Transfer soon after the agent completes the conversation. Don't mind for the interruption.
+
+                    ` },
+                  first_message: `
+
+                   Hi ${customParameters?.client}, it's Rachel from Roofing Stars! Thank you so much for filling out the application for roof service — I really appreciate it. 😊 
+
+                   Is it a *good time* to talk?
+                    `,
                 },
               }
             };
@@ -183,7 +355,11 @@ Shifa: It was my pleasure! Have a wonderful evening, and we’ll see you on Satu
           elevenLabsWs.on("message", (data) => {
             try {
               const message = JSON.parse(data);
+              console.log(`[Message]: ${message.type}`);
 
+              // console.log('🔹 Received ElevenLabs message:', JSON.stringify(message, null, 2));
+
+              // console.log(`[Message]: ${message.}`);
               switch (message.type) {
                 case "conversation_initiation_metadata":
                   console.log("[ElevenLabs] Received initiation metadata");
@@ -233,6 +409,40 @@ Shifa: It was my pleasure! Have a wonderful evening, and we’ll see you on Satu
                   }
                   break;
 
+                case "user_transcript":
+                  console.log(message.user_transcription_event?.user_transcript);
+                  if (message.user_transcription_event?.user_transcript) {
+                    const userText = message.user_transcription_event.user_transcript;
+                    console.log("[Customer said]:", userText);
+                  }
+                  break;
+
+                case "agent_response":
+                  console.log(message.agent_response_event?.agent_response);
+                  if (message.agent_response_event?.agent_response) {
+                    const agentText = message.agent_response_event?.agent_response;
+                    console.log("[Agent said]:", agentText);
+                  }
+                  break;
+
+                case "tool_request":
+                  console.log(`Tool Name: ${message.tool_request?.tool_name}`);
+
+                  break;
+
+                case "client_tool_call":
+                  console.log(`Client Tool Name: ${message.client_tool_call?.tool_name}`);
+                  handleCallTransfer(callSid, customParameters?.forward_number);
+                  break;
+
+                case "agent_response_correction":
+                  console.log(message.agent_response_correction_event?.corrected_agent_response);
+                  if (message.agent_response_correction_event?.corrected_agent_response) {
+                    const correctedAgentText = message.agent_response_correction_event?.corrected_agent_response;
+                    console.log("[Agent completed]:", correctedAgentText);
+                  }
+                  break;
+
                 default:
                   console.log(`[ElevenLabs] Unhandled message type: ${message.type}`);
               }
@@ -247,6 +457,15 @@ Shifa: It was my pleasure! Have a wonderful evening, and we’ll see you on Satu
 
           elevenLabsWs.on("close", () => {
             console.log("[ElevenLabs] Disconnected");
+            // // End the Twilio call when ElevenLabs disconnects
+            if (callSid) {
+              if (ws.readyState === WebSocket.OPEN) {
+                console.log(`[Server] Closing Twilio WebSocket after ElevenLabs disconnection`);
+                ws.close();
+              }
+            } else {
+              console.log("[ElevenLabs] Disconnected, but no callSid available to end Twilio call");
+            }
           });
 
         } catch (error) {
@@ -261,7 +480,7 @@ Shifa: It was my pleasure! Have a wonderful evening, and we’ll see you on Satu
       ws.on("message", (message) => {
         try {
           const msg = JSON.parse(message);
-          console.log(`[Twilio] Received event: ${msg.event}`);
+          // console.log(`[Twilio] Received event: ${msg.event}`);
 
           switch (msg.event) {
             case "start":
